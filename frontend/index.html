@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Product CRUD App</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <h1>Product Management</h1>
+
+  <div class="form-box">
+    <h2>Add / Update Product</h2>
+
+    <input type="hidden" id="productId">
+
+    <input type="text" id="name" placeholder="Product Name">
+    <input type="number" id="price" placeholder="Product Price">
+    <input type="text" id="description" placeholder="Product Description">
+
+    <button onclick="saveProduct()">Save Product</button>
+    <button onclick="resetForm()" class="secondary">Reset</button>
+  </div>
+
+  <h2>Products</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Price</th>
+        <th>Description</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="productTable"></tbody>
+  </table>
+
+  <script src="script.js"></script>
+</body>
+</html>
