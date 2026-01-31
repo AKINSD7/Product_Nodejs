@@ -1,110 +1,166 @@
 const express = require("express");
-const app = express();
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+require("dotenv").config();
+
+const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-
-app.listen(3000, () => {
-  console.log("Server is running on port 3000 : http://localhost:3000");
-});
-
-app.get("/", (req, res) => {
-  res.send("Hello, World!. akin product development server is running fine now.");
-});
-
-
-
 // In-memory storage
 let products = [];
+let users = [];
 let nextId = 1;
 
-/**
- * CREATE a product
- * POST /products
- */
-app.post("/products", (req, res) => {
+/* =======================
+   AUTH MIDDLEWARE
+======================= */
+
+const authenticate = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+const authorize = (role) => {
+  return (req, res, next) => {
+    if (req.user.role !== role) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    next();
+  };
+};
+
+/* =======================
+   AUTH ROUTES
+======================= */
+
+app.post("/register", async (req, res) => {
+  const { username, password, role } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: "Username and password required" });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  users.push({
+    username,
+    password: hashedPassword,
+    role: role || "user",
+  });
+
+  res.json({ message: "User registered successfully" });
+});
+
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+
+  const user = users.find(u => u.username === username);
+  if (!user) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  const token = jwt.sign(
+    { username: user.username, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN }
+  );
+
+  res.json({ token });
+});
+
+/* =======================
+   PRODUCT ROUTES
+======================= */
+
+// READ – any authenticated user
+app.get("/products", authenticate, (req, res) => {
+  res.json(products);
+});
+
+app.get("/products/:id", authenticate, (req, res) => {
+  const product = products.find(p => p.id === parseInt(req.params.id));
+  if (!product) {
+    return res.status(404).json({ message: "Product not found" });
+  }
+  res.json(product);
+});
+
+// CREATE – admin only
+app.post("/products", authenticate, authorize("admin"), (req, res) => {
   const { name, price, description } = req.body;
 
   if (!name || !price) {
-    return res.status(400).json({
-      message: "Product name and price are required"
-    });
+    return res.status(400).json({ message: "Name and price required" });
   }
 
   const product = {
     id: nextId++,
     name,
     price,
-    description: description || ""
+    description: description || "",
   };
 
   products.push(product);
   res.status(201).json(product);
 });
 
-/**
- * GET all products
- * GET /products
- */
-app.get("/products", (req, res) => {
-  res.json(products);
-});
-
-/**
- * GET product by ID
- * GET /products/:id
- */
-app.get("/products/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const product = products.find(p => p.id === id);
-
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
-  }
-
-  res.json(product);
-});
-
-/**
- * UPDATE a product
- * PUT /products/:id
- */
-app.put("/products/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const product = products.find(p => p.id === id);
-
+// UPDATE – admin only
+app.put("/products/:id", authenticate, authorize("admin"), (req, res) => {
+  const product = products.find(p => p.id === parseInt(req.params.id));
   if (!product) {
     return res.status(404).json({ message: "Product not found" });
   }
 
   const { name, price, description } = req.body;
-
-  if (name !== undefined) product.name = name;
-  if (price !== undefined) product.price = price;
-  if (description !== undefined) product.description = description;
+  if (name) product.name = name;
+  if (price) product.price = price;
+  if (description) product.description = description;
 
   res.json(product);
 });
 
-/**
- * DELETE a product
- * DELETE /products/:id
- */
-app.delete("/products/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const index = products.findIndex(p => p.id === id);
-
+// DELETE – admin only
+app.delete("/products/:id", authenticate, authorize("admin"), (req, res) => {
+  const index = products.findIndex(p => p.id === parseInt(req.params.id));
   if (index === -1) {
     return res.status(404).json({ message: "Product not found" });
   }
 
   const deleted = products.splice(index, 1);
-  res.json({
-    message: "Product deleted successfully",
-    product: deleted[0]
-  });
+  res.json({ message: "Product deleted", product: deleted[0] });
 });
+
+/* =======================
+   SERVER
+======================= */
+
+app.get("/", (req, res) => {
+  res.send("Akin product development server running successfully 🚀");
+});
+
+app.listen(process.env.PORT, () => {
+  console.log(`Server running on http://localhost:${process.env.PORT}`);
+});
+
 
